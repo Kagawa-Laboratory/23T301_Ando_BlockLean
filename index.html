@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Lean 4 Blockly (汎用 + 背理法 + 対偶法)</title>
+  <script src="https://unpkg.com/blockly/blockly_compressed.js"></script>
+  <script src="https://unpkg.com/blockly/blocks_compressed.js"></script>
+  <script src="https://unpkg.com/blockly/javascript_compressed.js"></script>
+  <script src="https://unpkg.com/blockly/msg/ja.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    #blocklyDiv { height: 520px; width: 100%; }
+    #codeArea {
+      margin-top: 10px;
+      padding: 12px;
+      background-color: #f4f4f4;
+      border: 1px solid #ccc;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+    #verifyBtn {
+      margin-top: 15px;
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #verifyBtn:hover { background-color: #0056b3; }
+    #resultArea {
+      margin-top: 10px;
+      padding: 12px;
+      border-radius: 4px;
+      font-weight: bold;
+      display: none;
+      white-space: pre-wrap;
+    }
+    .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+  </style>
+</head>
+<body>
+
+  <h1>Lean 4 証明学習システム</h1>
+  <div id="blocklyDiv"></div>
+
+  <button id="verifyBtn" onclick="verifyProof()">証明を検証する (Check)</button>
+  <div id="resultArea"></div>
+
+  <h3>生成される Lean 4 コード:</h3>
+  <div id="codeArea">（ブロックを配置してください）</div>
+
+  <!-- ツールボックス定義 -->
+  <xml id="toolbox" style="display: none">
+    <category name="対偶・背理法" colour="330">
+      <block type="lean_by_contrapositive"></block>
+      <block type="lean_by_contradiction"></block>
+      <block type="lean_contradiction"></block>
+      <block type="lean_theorem_contrapositive_ex"></block>
+      <block type="lean_theorem_sqrt2"></block>
+    </category>
+    <category name="定義と定理" colour="160">
+      <block type="lean_def_custom"></block>
+      <block type="lean_theorem_custom"></block>
+    </category>
+    <category name="帰納法と展開" colour="260">
+      <block type="lean_induction_custom"></block>
+      <block type="lean_rcases_custom"></block>
+      <block type="lean_dsimp_custom"></block>
+      <block type="lean_unfold_custom"></block>
+    </category>
+    <category name="タクティク (証明操作)" colour="290">
+      <block type="lean_use_custom"></block>
+      <block type="lean_rw_custom"></block>
+      <block type="lean_rw_back_custom"></block>
+      <block type="lean_have_custom"></block>
+      <block type="lean_exact_custom"></block>
+      <block type="lean_raw_tactic"></block>
+    </category>
+    <category name="自動計算" colour="120">
+      <block type="lean_auto_calc"></block>
+      <block type="lean_ring"></block>
+      <block type="lean_linarith"></block>
+    </category>
+  </xml>
+
+  <!-- 分割したJSファイルを読み込む -->
+  <script src="./lean_generator.js"></script>
+  
+
+  <!-- 検証用スクリプト (verifyProof と Blockly ワークスペース初期化) -->
+  <script>
+    var workspace = Blockly.inject('blocklyDiv', { toolbox: document.getElementById('toolbox') });
+
+    function buildFullLeanCode() {
+      var bodyCode = generator.workspaceToCode(workspace).trim();
+      if (!bodyCode) return '';
+      return bodyCode;
+    }
+
+    function updateCode() {
+      var code = buildFullLeanCode();
+      document.getElementById('codeArea').innerText = code || '（ブロックを配置してください）';
+    }
+    workspace.addChangeListener(updateCode);
+
+    async function verifyProof() {
+      var code = buildFullLeanCode();
+      var resultArea = document.getElementById('resultArea');
+      
+      resultArea.style.display = 'block';
+      resultArea.className = 'warning';
+      resultArea.innerText = '⏳ Lean 4 で証明を検証中...';
+
+      if (!code) {
+        resultArea.innerText = '⚠️ ブロックが配置されていません。';
+        return;
+      }
+
+      // Mathlib のインポートエラーを防ぐため先頭に 'module' を付与
+      var header = 
+    'module\n' +
+    'import Mathlib.Data.Nat.Basic\n' +
+    'import Mathlib.Tactic.Contrapose\n' +
+    'import Mathlib.Tactic.Use\n' +
+    'import Mathlib.Tactic.Ring\n\n';
+      try {
+        const response = await fetch('http://localhost:3000/api/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: header + code })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          resultArea.className = 'success';
+          resultArea.innerText = data.output;
+        } else {
+          resultArea.className = 'warning';
+          resultArea.innerText = '❌ 検証失敗:\n' + data.output;
+        }
+      } catch (err) {
+        resultArea.className = 'warning';
+        resultArea.innerText = '⚠️ サーバー通信エラー: server.js が起動しているか確認してください。';
+      }
+    }
+  </script>
+
+</body>
+</html>

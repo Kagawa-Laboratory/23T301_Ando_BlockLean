@@ -1,0 +1,2 @@
+.lake/
+echo my_proof_server/ >> .gitignore
